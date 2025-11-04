@@ -191,7 +191,21 @@ class KanadePipeline(L.LightningModule):
 
         # Load checkpoint if provided
         if self.config.ckpt_path:
-            self._load_weights(self.config.ckpt_path)
+            ckpt_path = self.config.ckpt_path
+
+            # Download weights from HuggingFace Hub if needed
+            if ckpt_path.startswith("hf:"):
+                from huggingface_hub import hf_hub_download
+
+                repo_id = ckpt_path[len("hf:") :]
+                # Separate out revision if specified
+                revision = None
+                if "@" in repo_id:
+                    repo_id, revision = repo_id.split("@", 1)
+
+                ckpt_path = hf_hub_download(repo_id, filename="model.safetensors", revision=revision)
+
+            self._load_weights(ckpt_path)
 
     def forward(self, waveform: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """
@@ -687,9 +701,9 @@ class KanadePipeline(L.LightningModule):
             result = self.model.load_state_dict(model_state_dict, strict=False)
             logger.info(f"Loaded model weights from {ckpt_path or 'provided state_dict'}.")
             if result.missing_keys:
-                logger.warning(f"Missing keys in model state_dict: {result.missing_keys}")
+                logger.debug(f"Missing keys in model state_dict: {result.missing_keys}")
             if result.unexpected_keys:
-                logger.warning(f"Unexpected keys in model state_dict: {result.unexpected_keys}")
+                logger.debug(f"Unexpected keys in model state_dict: {result.unexpected_keys}")
 
         # Load discriminator weights if available
         if self.use_discriminator:
@@ -701,28 +715,23 @@ class KanadePipeline(L.LightningModule):
                 result = self.discriminator.load_state_dict(disc_state_dict, strict=False)
                 logger.info(f"Loaded discriminator weights from {ckpt_path}.")
                 if result.missing_keys:
-                    logger.warning(f"Missing keys in discriminator state_dict: {result.missing_keys}")
+                    logger.debug(f"Missing keys in discriminator state_dict: {result.missing_keys}")
                 if result.unexpected_keys:
-                    logger.warning(f"Unexpected keys in discriminator state_dict: {result.unexpected_keys}")
+                    logger.debug(f"Unexpected keys in discriminator state_dict: {result.unexpected_keys}")
 
-    @staticmethod
-    def from_pretrained(
-        config_path: str, ckpt_path: str | None = None, model_state_dict: dict[str, torch.Tensor] | None = None
-    ) -> "KanadePipeline":
-        """Load KanadePipeline from training configuration and checkpoint files.
+    @classmethod
+    def from_hparams(cls, config_path: str) -> "KanadePipeline":
+        """Instantiate KanadePipeline from config file.
         Args:
-            config_path: Path to pipeline configuration file (YAML).
-            ckpt_path: Path to checkpoint file (.ckpt) or model weights (.pt, .pth, .safetensors).
-            model_state_dict: Optional state dict to load model weights from directly.
-                              If provided, ckpt_path is ignored and discriminator weights are not loaded.
+            config_path (str): Path to model configuration file (.yaml).
         Returns:
-            KanadePipeline instance with loaded weights.
+            KanadePipeline: Instantiated KanadePipeline.
         """
         # Load config
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
-        # Remove unnecessary fields from the configuration
+        # Remove related fields to prevent loading actual weights here
         new_config = {"model": config["model"]}
         pipeline_config = new_config["model"]["init_args"]["pipeline_config"]
         if "ckpt_path" in pipeline_config:
@@ -735,8 +744,19 @@ class KanadePipeline(L.LightningModule):
         parser.add_argument("--model", type=KanadePipeline)
         cfg = parser.parse_object(new_config)
         cfg = parser.instantiate_classes(cfg)
-        model: KanadePipeline = cfg.model
+        return cfg.model
 
+    @staticmethod
+    def from_pretrained(config_path: str, ckpt_path: str) -> "KanadePipeline":
+        """Load KanadePipeline from training configuration and checkpoint files.
+        Args:
+            config_path: Path to pipeline configuration file (YAML).
+            ckpt_path: Path to checkpoint file (.ckpt) or model weights (.safetensors).
+        Returns:
+            KanadePipeline: Instantied KanadePipeline with loaded weights.
+        """
+        # Load pipeline from config
+        model = KanadePipeline.from_hparams(config_path)
         # Load the weights
-        model._load_weights(ckpt_path, model_state_dict=model_state_dict)
+        model._load_weights(ckpt_path)
         return model

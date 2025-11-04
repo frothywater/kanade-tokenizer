@@ -327,6 +327,8 @@ class KanadeModel(nn.Module):
         mel_recon = self.mel_postnet(mel_recon)
         return mel_recon
 
+    # ======== Inference methods ========
+
     def weights_to_save(self) -> dict[str, torch.Tensor]:
         """Get model weights for saving. Excludes certain modules not needed for inference."""
         excluded_modules = ["ssl_feature_extractor", "feature_decoder", "conv_upsample"]
@@ -337,43 +339,59 @@ class KanadeModel(nn.Module):
         }
         return state_dict
 
-    @staticmethod
-    def from_pretrained(
-        config_path: str, weights_path: str | None = None, state_dict: dict[str, torch.Tensor] | None = None
-    ) -> "KanadeModel":
-        """Load KanadeModel from model configuration and weights files.
+    @classmethod
+    def from_hparams(cls, config_path: str) -> "KanadeModel":
+        """Instantiate KanadeModel from config file.
         Args:
-            config_path (str): Path to model configuration file (YAML).
-            weights_path (str, optional): Path to model weights file (.safetensors, .pt, .pth).
-            state_dict (dict, optional): Optional state dict to load model weights from directly. If provided, weights_path is ignored.
+            config_path (str): Path to model configuration file (.yaml).
         Returns:
-            KanadeModel: Loaded KanadeModel instance.
+            KanadeModel: Instantiated KanadeModel.
         """
-        # Instantiate model using jsonargparse
         parser = jsonargparse.ArgumentParser(exit_on_error=False)
         parser.add_argument("--model", type=KanadeModel)
         cfg = parser.parse_path(config_path)
         cfg = parser.instantiate_classes(cfg)
-        model: KanadeModel = cfg.model
+        return cfg.model
 
-        # Load weights from file if provided
-        if weights_path is not None and state_dict is None:
-            if weights_path.endswith(".safetensors"):
-                from safetensors.torch import load_file
+    @classmethod
+    def from_pretrained(
+        cls,
+        repo_id: str | None,
+        revision: str | None = None,
+        config_path: str | None = None,
+        weights_path: str | None = None,
+    ) -> "KanadeModel":
+        """Load KanadeModel either from HuggingFace Hub or local config and weights files.
+        Args:
+            repo_id (str, optional): HuggingFace Hub repository ID. If provided, loads config and weights from the hub.
+            revision (str, optional): Revision (branch, tag, commit) for the HuggingFace Hub repo.
+            config_path (str, optional): Path to model configuration file (.yaml). Required if repo_id is not provided.
+            weights_path (str, optional): Path to model weights file (.safetensors). Required if repo_id is not provided.
+        Returns:
+            KanadeModel: Loaded KanadeModel instance.
+        """
+        if repo_id is not None:
+            # Load from HuggingFace Hub
+            from huggingface_hub import hf_hub_download
 
-                state_dict = load_file(weights_path, device="cpu")
-                logger.info(f"Loaded weights from safetensors file: {weights_path}")
-            elif weights_path.endswith(".pt") or weights_path.endswith(".pth"):
-                state_dict = torch.load(weights_path, map_location="cpu")
-                logger.info(f"Loaded weights from standard PyTorch file: {weights_path}")
-            else:
-                raise ValueError(f"Unsupported weights file format: {weights_path}")
-
-        # Load the weights into the model
-        if state_dict is not None:
-            model.load_state_dict(state_dict, strict=False)
+            config_path = hf_hub_download(repo_id, "config.yaml", revision=revision)
+            weights_path = hf_hub_download(repo_id, "model.safetensors", revision=revision)
         else:
-            logger.warning("No state_dict provided, model weights are randomly initialized.")
+            # Check local paths
+            if config_path is None or weights_path is None:
+                raise ValueError(
+                    "Please provide either HuggingFace Hub repo_id or both config_path and weights_path for model loading."
+                )
+
+        # Load model from config
+        model = cls.from_hparams(config_path)
+
+        # Load weights
+        from safetensors.torch import load_file
+
+        state_dict = load_file(weights_path, device="cpu")
+        model.load_state_dict(state_dict, strict=False)
+        logger.info(f"Loaded weights from safetensors file: {weights_path}")
 
         return model
 

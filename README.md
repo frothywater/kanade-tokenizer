@@ -20,48 +20,45 @@ Kanade is a speech tokenizer that encodes speech into compact content tokens and
 
 ## Models
 
-| Model  | Token Rate | Vocab Size | Bit Rate | Dataset  | SSL Encoder | Vocoder     | Parameters |
-| ------ | ---------- | ---------- | -------- | -------- | ----------- | ----------- | ---------- |
-| `12hz` | 12.5 Hz    | 12800      | 171 bps  | LibriTTS | WavLM-base+ | Vocos 24kHz | 120M       |
-| `25hz` | 25 Hz      | 12800      | 341 bps  | LibriTTS | WavLM-base+ | Vocos 24kHz | 118M       |
-
-Weights files will be made available soon.
+| Model                                                               | Token Rate | Vocab Size | Bit Rate | Dataset  | SSL Encoder | Vocoder     | Parameters |
+| ------------------------------------------------------------------- | ---------- | ---------- | -------- | -------- | ----------- | ----------- | ---------- |
+| [`kanade-12.5hz`](https://huggingface.co/frothywater/kanade-12.5hz) | 12.5 Hz    | 12800      | 171 bps  | LibriTTS | WavLM-base+ | Vocos 24kHz | 120M       |
+| [`kanade-25hz`](https://huggingface.co/frothywater/kanade-25hz)     | 25 Hz      | 12800      | 341 bps  | LibriTTS | WavLM-base+ | Vocos 24kHz | 118M       |
 
 ## Installation
 
-For simple inference, you can install Kanade tokenizer from this repository directory as an editable package to your virtual environment:
+For simple inference, you can install Kanade tokenizer to your virtual environment:
 
 ```bash
 # In your own project's virtual environment
-uv add --editable /path/to/kanade-tokenizer
+uv add git+https://github.com/frothywater/kanade-tokenizer
 # or using pip
-pip install -e /path/to/kanade-tokenizer
+pip install git+https://github.com/frothywater/kanade-tokenizer
 ```
 
-If you want to train the model, you can directly work in the repository directory after installing the dependencies (with extra `train` dependencies):
+If you want to train the model, you can directly work in the repository after installing the dependencies (with extra `train` dependencies):
+
 ```bash
-cd /path/to/kanade-tokenizer
-# In the repository directory
+git clone https://github.com/frothywater/kanade-tokenizer
+cd kanade-tokenizer
 uv sync --extra train
 # or using pip
 pip install -e ".[train]"
 ```
 
 > [!IMPORTANT]
-We use [FlashAttention](https://github.com/Dao-AILab/flash-attention) for efficient local window attention in our training. We recommend installing it following the instructions in their repository to get the best performance and the closest match to our setup. The model will fall back to regular PyTorch SDPA implementation if FlashAttention is not available. In this case, we cannot guarantee the same quality as reported in the paper.  
-If using uv, you can install FlashAttention like: `uv pip install flash-attn --no-build-isolation`.
+> We use [FlashAttention](https://github.com/Dao-AILab/flash-attention) for efficient local window attention in our training. We recommend installing it following the instructions in their repository to get the best performance and the closest match to our setup. The model will fall back to regular PyTorch SDPA implementation if FlashAttention is not available. In this case, we cannot guarantee the same quality as reported in the paper.  
+> If using uv, you can install FlashAttention like: `uv pip install flash-attn --no-build-isolation`. (Ensure `ninja` is installed in your system or the build will be very slow.)
 
 ## Usage
 
-Example code to load the model and do inference:
+Example code to load the model from HuggingFace Hub and run inference:
 
 ```python
 from kanade_tokenizer import KanadeModel, load_audio, load_vocoder, vocode
 
 # Load Kanade model
-config_path = "config/model/12hz.yaml"
-weights_path = "weights/12hz.safetensors"
-model = KanadeModel.from_pretrained(config_path, weights_path=weights_path)
+model = KanadeModel.from_pretrained("frothywater/kanade-12.5hz")  # or "frothywater/kanade-25hz"
 model = model.eval().cuda()
 
 # Load vocoder
@@ -103,7 +100,7 @@ Then, modify the config file in `config/train/` for dataset paths and other trai
 - `trainer.default_root_dir`: Directory to save checkpoints and logs.
 - `data.{train|val|test}_config.csv_path`: Path to the CSV file containing dataset metadata, generated in the previous step.
 - `data.{train|val|test}_config.audio_root`: Root directory of the audio files. This should be consistent with the directory used when dumping the CSV files. (You can check the CSV files to see the relative paths.)
-- `model.pipeline_config.ckpt_path`: Optional path to a checkpoint to load weights and optimizer states from. Used for post-training in our case.
+- `model.pipeline_config.ckpt_path`: Optional path or HuggingFace Hub repo ID to a checkpoint to load weights (and optimizer states) from. Used for post-training in our case. To know more, look at the fine-tuning section below.
 
 Finally, run the training command:
 
@@ -118,6 +115,7 @@ uv run cli.py fit --config config/train/12hz_gan.yaml
 ```
 
 If you want to use WandB for logging, you can set the WandB logger object provided by Lightning to `trainer.logger` in the config file:
+
 ```yaml
 trainer:
   logger:
@@ -130,4 +128,12 @@ trainer:
 
 ### Fine-tuning
 
-To fine-tune on your own dataset, you can create a new config file based on the existing ones and change the dataset paths. In this case, specify the `model.pipeline_config.ckpt_path` field to load the pretrained weights. The checkpoint can be either the Lightning checkpoint saved during training or a Safetensors checkpoint.
+To fine-tune on your own dataset, you can create a new config file based on the existing ones and change the dataset paths (for which paths to change, look at the training section above). You can also modify other hyperparameters such as learning rate, batch size, etc. as needed.
+
+To load the pretrained weights before fine-tuning, specify the `model.pipeline_config.ckpt_path` field. The path can be either a HuggingFace Hub repo ID of our pretrained model or a Lightning checkpoint saved during your own training. The HuggingFace Hub repo ID format for this field is: `hf:{repo_id}@{revision}` with optional `@{revision}` to specify version. You can use `hf:frothywater/kanade-12.5hz` or `hf:frothywater/kanade-25hz` to load our weights. Remember to match the config file with the model you are loading weights from.
+
+Then, run the training command:
+
+```bash
+uv run cli.py fit --config config/train/your_finetune_config.yaml
+```

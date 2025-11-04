@@ -171,7 +171,7 @@ model:
       discriminator_update_prob: 1.0
 
       # Checkpoint loading
-      ckpt_path: /path/to/ckpt # Path to pre-trained model checkpoint
+      ckpt_path: hf:frothywater/kanade-25hz
 
       # Other
       log_mel_samples: 10

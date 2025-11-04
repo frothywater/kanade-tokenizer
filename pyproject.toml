@@ -5,6 +5,7 @@ description = "Kanade is a speech tokenizer that encodes speech into compact con
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "huggingface_hub",
   "jsonargparse[signatures]",
   "numpy",
   "safetensors",
