@@ -1,5 +1,6 @@
 # Kanade: A Simple Disentangled Tokenizer for Spoken Language Modeling
 
+[Paper](https://arxiv.org/abs/2602.00594) &ensp;
 [Code](https://github.com/frothywater/kanade-tokenizer) &ensp;
 [Demo](https://frothywater.github.io/kanade-tokenizer/) &ensp;
 [Weights](https://huggingface.co/frothywater/kanade-25hz-clean)
