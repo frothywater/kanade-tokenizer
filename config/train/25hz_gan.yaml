@@ -139,7 +139,7 @@ model:
 
     pipeline_config:
       # Training control
-      train_feature: true
+      train_feature: false
       train_mel: true
 
       # Audio settings
