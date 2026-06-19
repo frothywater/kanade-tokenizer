@@ -24,54 +24,6 @@ def init_weights(m, mean=0.0, std=0.01):
         m.weight.data.normal_(mean, std)
 
 
-def mel_spec_transform(
-    audio: torch.Tensor,
-    n_fft: int,
-    n_mels: int,
-    sample_rate: int,
-    hop_size: int,
-    win_size: int,
-    fmin: int = 0,
-    fmax: Optional[int] = None,
-):
-    from librosa.filters import mel as librosa_mel_fn
-
-    # (n_mels, n_fft // 2 + 1)
-    mel_basis = librosa_mel_fn(
-        sr=sample_rate, n_fft=n_fft, n_mels=n_mels, norm="slaney", htk=False, fmin=fmin, fmax=fmax
-    )
-    mel_basis = torch.from_numpy(mel_basis).float()
-    hann_window = torch.hann_window(win_size)
-
-    # Pad so that the output length T = L // hop_length
-    padding = (n_fft - hop_size) // 2
-    audio = torch.nn.functional.pad(audio, (padding, padding), mode="reflect")
-    audio = audio.reshape(-1, audio.shape[-1])
-
-    # (B, n_fft // 2 + 1, T=1 + (L' - n_fft) // hop_length)
-    # L' = L + n_fft - hop_length
-    # T = L // hop_length
-    spec = torch.stft(
-        audio,
-        n_fft=n_fft,
-        hop_length=hop_size,
-        win_length=win_size,
-        window=hann_window,
-        center=False,
-        pad_mode="reflect",
-        normalized=False,
-        onesided=True,
-        return_complex=True,
-    )
-    spec = spec.reshape(audio.shape[:-1] + spec.shape[-2:])
-
-    spec = torch.sqrt(torch.view_as_real(spec).pow(2).sum(-1) + 1e-9)
-    mel_spec = torch.matmul(mel_basis, spec)
-    mel_spec = torch.log(torch.clamp(mel_spec, min=1e-5))
-
-    return mel_spec
-
-
 class Snake(nn.Module):
     """
     Implementation of a sine-based periodic activation function

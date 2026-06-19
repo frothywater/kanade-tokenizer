@@ -23,6 +23,7 @@ train = [
   "matplotlib",
   "tensorboard",
   "wandb",
+  "librosa",
 ]
 
 [build-system]
